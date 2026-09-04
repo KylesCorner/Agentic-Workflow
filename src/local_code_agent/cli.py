@@ -38,6 +38,21 @@ def build_registry(repo: Path, *, web: bool, auto_approve: bool) -> ToolRegistry
     execution = ExecutionTools(repo)
     rag = RAGTools(repo)
 
+    registry.add(
+        rag.rag_index_repository,
+        Permission.WRITE,
+    )
+
+    registry.add(
+        rag.rag_search,
+        Permission.READ,
+    )
+
+    registry.add(
+        rag.rag_get_chunk,
+        Permission.READ,
+    )
+
     registry.add(fs.read_file)
     registry.add(fs.list_files)
     registry.add(fs.search_text)
@@ -76,10 +91,6 @@ def build_registry(repo: Path, *, web: bool, auto_approve: bool) -> ToolRegistry
     registry.add(execution.run_tests, Permission.EXECUTE)
     registry.add(execution.run_build, Permission.EXECUTE)
 
-    # Add RAG tools
-    registry.add(rag.index_repository, Permission.WRITE)
-    registry.add(rag.search_code, Permission.READ)
-    registry.add(rag.get_chunk_details, Permission.READ)
 
     if web:
         tavily = TavilyTools(settings.tavily_api_key)

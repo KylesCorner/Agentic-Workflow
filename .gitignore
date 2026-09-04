@@ -79,6 +79,10 @@ Thumbs.db
 *.lca.log
 cache/
 logs/
+# Local Code Agent RAG index
+.rag_index.db
+.rag_index.db-*
+.rag_indexed
 *.db
 
 # Python

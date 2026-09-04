@@ -2,7 +2,7 @@
 
 A local coding-agent CLI for C, C++, and Python. It talks to an Ollama server over localhost, LAN, or Tailscale and can inspect/edit repositories, use Git/GitHub, run constrained tests/builds, and optionally search the web with Tavily.
 
-The Tree-sitter RAG subsystem remains in `local_code_agent.rag` but is intentionally **not connected yet**.
+The Tree-sitter RAG subsystem is now fully integrated and functional in `local_code_agent.rag`.
 
 ## Install
 
@@ -37,6 +37,7 @@ Copy `.env.example` to `.env`, or export the variables in your shell:
 ```dotenv
 OLLAMA_HOST=http://100.x.x.x:11434
 OLLAMA_MODEL=qwen3-coder:latest
+OLLAMA_EMBED_MODEL=nomic-embed-text:latest
 TAVILY_API_KEY=tvly-...
 
 CODE_AGENT_MAX_TOOL_ITERATIONS=20
@@ -131,6 +132,7 @@ Read-only:
 - `web_search` when `--web` is enabled
 - `search_code` - Search code with hybrid retrieval (BM25 + semantic)
 - `get_chunk_details` - Get detailed information about specific code chunks
+- `index_repository` - Index repository for RAG search
 
 Approval required unless `--yes`:
 
@@ -193,9 +195,9 @@ Before adding RAG, test the agent on real repositories in increasing order of ri
 
 This sequence isolates model/tool-call failures from repository retrieval problems. RAG should come only after these behaviors are dependable.
 
-## RAG later
+## RAG System
 
-The optional `rag/` package already contains the Tree-sitter language registry and semantic chunk model for C, C++, and Python. The next RAG milestone should add embeddings, local vector storage, indexing/update policy, and a read-only `rag_search()` tool without changing the core agent loop.
+The Tree-sitter RAG system is now fully integrated and functional. It provides semantic code chunking, embedding generation, and hybrid retrieval (BM25 + semantic similarity) for code understanding in the local code agent.
 
 ## Using the RAG System
 
