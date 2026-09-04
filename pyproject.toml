@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "local-code-agent"
+version = "0.1.1"
+description = "Local Ollama coding agent with filesystem, Git, GitHub, and optional Tavily tools."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "ollama>=0.6.0",
+  "typer>=0.16.0",
+  "rich>=14.0.0",
+  "pydantic-settings>=2.10.0",
+]
+
+[project.optional-dependencies]
+web = [
+  "tavily-python>=0.7.0",
+]
+rag = [
+  "tree-sitter>=0.26,<0.27",
+  "tree-sitter-c",
+  "tree-sitter-cpp",
+  "tree-sitter-python",
+]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.12",
+  "mypy>=1.17",
+]
+
+[project.scripts]
+local-code-agent = "local_code_agent.cli:app"
+lca = "local_code_agent.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_code_agent"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
