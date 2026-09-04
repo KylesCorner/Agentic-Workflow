@@ -42,7 +42,10 @@ TAVILY_API_KEY=tvly-...
 
 CODE_AGENT_MAX_TOOL_ITERATIONS=20
 CODE_AGENT_MAX_TOOL_OUTPUT_CHARS=40000
+CODE_AGENT_USE_RAG=true
 ```
+
+The `CODE_AGENT_USE_RAG` setting controls whether the agent will automatically use the RAG system for contextual information. Set it to `false` to disable RAG usage.
 
 Tavily currently supports keyless `search()` calls, so `TAVILY_API_KEY` is optional for basic use, although keyless mode is rate-limited.
 

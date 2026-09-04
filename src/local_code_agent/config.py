@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     tavily_api_key: str | None = None
     code_agent_max_tool_iterations: int = 20
     code_agent_max_tool_output_chars: int = 40_000
+    code_agent_use_rag: bool = True
 
 
 settings = Settings()

@@ -18,6 +18,8 @@ from local_code_agent.tools.git import GitTools
 from local_code_agent.tools.github import GitHubTools
 from local_code_agent.tools.registry import ExplicitAction, Permission, ToolRegistry
 from local_code_agent.tools.tavily import TavilyTools
+from local_code_agent.tools.unix import UnixTools
+from local_code_agent.tools.docker import DockerTools
 from local_code_agent.tools.rag import RAGTools
 from local_code_agent.workspace import discover_workspace
 
@@ -37,6 +39,8 @@ def build_registry(repo: Path, *, web: bool, auto_approve: bool) -> ToolRegistry
     github = GitHubTools(repo)
     execution = ExecutionTools(repo)
     rag = RAGTools(repo)
+    unix = UnixTools(repo)
+    docker = DockerTools(repo)
 
     registry.add(
         rag.rag_index_repository,
@@ -90,6 +94,17 @@ def build_registry(repo: Path, *, web: bool, auto_approve: bool) -> ToolRegistry
 
     registry.add(execution.run_tests, Permission.EXECUTE)
     registry.add(execution.run_build, Permission.EXECUTE)
+
+    # Add Unix tools
+    registry.add(unix.grep, Permission.READ)
+    registry.add(unix.find, Permission.READ)
+    registry.add(unix.sed, Permission.WRITE)
+
+    # Add Docker tools
+    registry.add(docker.docker_run, Permission.EXECUTE)
+    registry.add(docker.docker_ps, Permission.READ)
+    registry.add(docker.docker_images, Permission.READ)
+    registry.add(docker.docker_build, Permission.WRITE)
 
 
     if web:

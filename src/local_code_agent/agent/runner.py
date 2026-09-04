@@ -8,6 +8,8 @@ from rich.console import Console
 from local_code_agent.agent.prompts import system_prompt
 from local_code_agent.agent.tool_recovery import recover_tool_calls
 from local_code_agent.tools.registry import ToolRegistry
+from local_code_agent.tools.rag import RAGTools
+from local_code_agent.config import settings
 
 
 class AgentRunner:
@@ -26,6 +28,7 @@ class AgentRunner:
         self.registry = registry
         self.max_iterations = max_iterations
         self.console = console or Console()
+        self.repo = repo
 
         self.messages: list = [
             {
@@ -33,6 +36,12 @@ class AgentRunner:
                 "content": system_prompt(repo),
             },
         ]
+        
+        # Initialize RAG tools for contextual search
+        self.rag_tools = RAGTools(repo)
+        
+        # Check if RAG is enabled in settings
+        self.use_rag = settings.code_agent_use_rag
 
     def reset_context(self) -> None:
         """Reset the conversation context to default (keep only system prompt)."""
@@ -191,7 +200,49 @@ class AgentRunner:
             self.messages.append(message)
             return content
 
-        return (
-            f"Stopped after {self.max_iterations} "
-            "tool iterations."
-        )
+    def _should_use_rag(self, user_message: str) -> bool:
+        """Determine if RAG should be used for this query."""
+        # Use RAG for complex queries that might benefit from context
+        # or when the message is longer than a certain threshold
+        if len(user_message) > 100:
+            return True
+        
+        # Also use RAG for queries that mention technical concepts,
+        # code structures, or repository-specific terms
+        technical_keywords = [
+            'function', 'class', 'method', 'variable', 'import',
+            'module', 'package', 'implementation', 'design', 
+            'architecture', 'pattern', 'algorithm'
+        ]
+        
+        message_lower = user_message.lower()
+        for keyword in technical_keywords:
+            if keyword in message_lower:
+                return True
+                
+        return False
+
+    def _get_rag_context(self, user_message: str) -> str:
+        """Get relevant context from RAG system."""
+        try:
+            # Only search if RAG is available
+            if (
+                self.rag_tools.db_path.exists() 
+                and self.rag_tools.rag_system.size() > 0
+            ):
+                # Use the rag_search tool to get relevant context
+                context = self.rag_tools.rag_search(
+                    query=user_message,
+                    top_k=3,
+                    hybrid_alpha=0.5
+                )
+                
+                # If we got results, return them
+                if "ERROR:" not in context and "No relevant" not in context:
+                    return context
+                    
+        except Exception as e:
+            # If there's an error with RAG, continue without it
+            self.console.print(f"[yellow]warning:[/] RAG context failed: {e}")
+            
+        return ""
