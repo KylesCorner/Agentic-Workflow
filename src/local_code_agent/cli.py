@@ -124,7 +124,9 @@ def chat(
             "[yellow]--yes:[/] ordinary writes/builds/tests auto-approved; "
             "commit/branch/push/PR still require an explicit user request."
         )
-    console.print("Type [bold]/exit[/] to quit.\n")
+    console.print("Type [bold]/exit[/] to quit.")
+    console.print("Type [bold]/reset[/] to reset the conversation context.")
+    console.print()
 
     while True:
         try:
@@ -136,6 +138,10 @@ def chat(
             continue
         if prompt in {"/exit", "/quit"}:
             break
+        elif prompt == "/reset":
+            runner.reset_context()
+            console.print("[yellow]Context reset.[/]")
+            continue
         try:
             answer = runner.ask(prompt)
         except Exception as exc:
