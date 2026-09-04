@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "qwen3-coder:latest"
+    ollama_embedding_model: str = "nomic-embed-text:latest"
     tavily_api_key: str | None = None
     code_agent_max_tool_iterations: int = 20
     code_agent_max_tool_output_chars: int = 40_000

@@ -34,6 +34,15 @@ class AgentRunner:
             },
         ]
 
+    def reset_context(self) -> None:
+        """Reset the conversation context to default (keep only system prompt)."""
+        self.messages = [
+            {
+                "role": "system",
+                "content": self.messages[0]["content"],
+            },
+        ]
+
     def ask(self, user_message: str) -> str:
         self.registry.begin_turn(user_message)
 

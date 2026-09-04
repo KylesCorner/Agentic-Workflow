@@ -79,6 +79,7 @@ Thumbs.db
 *.lca.log
 cache/
 logs/
+*.db
 
 # Python
 .pytest_cache/

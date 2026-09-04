@@ -18,6 +18,7 @@ from local_code_agent.tools.git import GitTools
 from local_code_agent.tools.github import GitHubTools
 from local_code_agent.tools.registry import ExplicitAction, Permission, ToolRegistry
 from local_code_agent.tools.tavily import TavilyTools
+from local_code_agent.tools.rag import RAGTools
 from local_code_agent.workspace import discover_workspace
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -35,6 +36,7 @@ def build_registry(repo: Path, *, web: bool, auto_approve: bool) -> ToolRegistry
     git = GitTools(repo)
     github = GitHubTools(repo)
     execution = ExecutionTools(repo)
+    rag = RAGTools(repo)
 
     registry.add(fs.read_file)
     registry.add(fs.list_files)
@@ -73,6 +75,11 @@ def build_registry(repo: Path, *, web: bool, auto_approve: bool) -> ToolRegistry
 
     registry.add(execution.run_tests, Permission.EXECUTE)
     registry.add(execution.run_build, Permission.EXECUTE)
+
+    # Add RAG tools
+    registry.add(rag.index_repository, Permission.WRITE)
+    registry.add(rag.search_code, Permission.READ)
+    registry.add(rag.get_chunk_details, Permission.READ)
 
     if web:
         tavily = TavilyTools(settings.tavily_api_key)
@@ -124,7 +131,9 @@ def chat(
             "[yellow]--yes:[/] ordinary writes/builds/tests auto-approved; "
             "commit/branch/push/PR still require an explicit user request."
         )
-    console.print("Type [bold]/exit[/] to quit.\n")
+    console.print("Type [bold]/exit[/] to quit.")
+    console.print("Type [bold]/reset[/] to reset the conversation context.")
+    console.print()
 
     while True:
         try:
@@ -136,6 +145,10 @@ def chat(
             continue
         if prompt in {"/exit", "/quit"}:
             break
+        elif prompt == "/reset":
+            runner.reset_context()
+            console.print("[yellow]Context reset.[/]")
+            continue
         try:
             answer = runner.ask(prompt)
         except Exception as exc:

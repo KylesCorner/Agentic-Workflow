@@ -18,7 +18,7 @@ Install optional Tavily support only when you want web search:
 pip install -e '.[web]'
 ```
 
-Install the future Tree-sitter RAG dependencies separately:
+Install the Tree-sitter RAG dependencies:
 
 ```bash
 pip install -e '.[rag]'
@@ -129,6 +129,8 @@ Read-only:
 - `github_issue_view`
 - `github_pr_view`
 - `web_search` when `--web` is enabled
+- `search_code` - Search code with hybrid retrieval (BM25 + semantic)
+- `get_chunk_details` - Get detailed information about specific code chunks
 
 Approval required unless `--yes`:
 
@@ -137,6 +139,7 @@ Approval required unless `--yes`:
 - `git_add`
 - `run_tests`
 - `run_build`
+- `index_repository` - Index repository for semantic search
 
 Explicit request required **in addition to** normal approval policy:
 
@@ -193,3 +196,48 @@ This sequence isolates model/tool-call failures from repository retrieval proble
 ## RAG later
 
 The optional `rag/` package already contains the Tree-sitter language registry and semantic chunk model for C, C++, and Python. The next RAG milestone should add embeddings, local vector storage, indexing/update policy, and a read-only `rag_search()` tool without changing the core agent loop.
+
+## Using the RAG System
+
+The Tree-sitter RAG system can be used to index and retrieve code chunks from repositories:
+
+```python
+from local_code_agent.rag.retriever import RAGSystem
+
+# Create RAG system
+rag = RAGSystem()
+
+# Index a repository
+rag.index_repository("/path/to/your/repo")
+
+# Search for relevant code
+results = rag.search("function to calculate factorial")
+for result in results:
+    print(f"Found: {result.chunk.symbol} in {result.chunk.path}")
+```
+
+## Hybrid Retrieval
+
+The RAG system now supports hybrid retrieval combining BM25 and semantic similarity search:
+
+```python
+# BM25-only search (default)
+results = rag.search("function name", hybrid_alpha=0.0)
+
+# Semantic-only search  
+results = rag.search("function name", hybrid_alpha=1.0)
+
+# Hybrid search (balanced)
+results = rag.search("function name", hybrid_alpha=0.5)
+```
+
+## Persistent Storage
+
+The RAG system now uses SQLite-based persistent storage to maintain indexes between sessions. The default database file is `rag_index.db` and can be customized:
+
+```python
+from local_code_agent.rag.retriever import RAGSystem
+
+# Use custom database path
+rag = RAGSystem(db_path="/path/to/custom_index.db")
+```
