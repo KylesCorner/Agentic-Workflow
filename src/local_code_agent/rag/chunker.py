@@ -20,20 +20,31 @@ def _text(node: Node, source: bytes) -> str:
 
 
 def _walk(node: Node):
-    yield node
-    for child in node.named_children:
-        yield from _walk(child)
+    """Depth-first AST traversal without Python recursion."""
+    stack = [node]
+
+    while stack:
+        current = stack.pop()
+        yield current
+
+        # Reverse so traversal order matches recursive DFS.
+        stack.extend(reversed(current.named_children))
 
 
 def _find_identifier(node: Node, source: bytes) -> str | None:
-    if node.type in IDENTIFIER_TYPES:
-        return _text(node, source)
-    for child in reversed(node.children):
-        result = _find_identifier(child, source)
-        if result:
-            return result
-    return None
+    """Find an identifier without recursive AST traversal."""
+    stack = [node]
 
+    while stack:
+        current = stack.pop()
+
+        if current.type in IDENTIFIER_TYPES:
+            return _text(current, source)
+
+        # Previous implementation searched children in reverse order.
+        stack.extend(current.children)
+
+    return None
 
 def _symbol_name(node: Node, source: bytes) -> str | None:
     name = node.child_by_field_name("name")

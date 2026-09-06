@@ -120,56 +120,74 @@ class EmbeddingSystem:
                 db_path=db_path,
             )
         )
-    def generate_embedding(self, text: str) -> List[float]:
-        """Generate an embedding using the configured Ollama server.
 
-        Args:
-            text: Text to embed.
+    def generate_embeddings(
+        self,
+        texts: list[str],
+    ) -> list[list[float]]:
+        """Generate embeddings for several texts in one Ollama request."""
 
-        Returns:
-            Embedding vector.
-
-        Raises:
-            RuntimeError: If Ollama cannot generate an embedding.
-        """
+        if not texts:
+            return []
 
         try:
             response = self.client.embed(
                 model=self.embedding_model,
-                input=text,
+                input=texts,
             )
-
-            if not response.embeddings:
-                raise RuntimeError(
-                    "Ollama returned no embedding vectors."
-                )
-
-            return list(response.embeddings[0])
 
         except Exception as exc:
             raise RuntimeError(
-                "Failed to generate embedding "
+                "Failed to generate embeddings "
                 f"using model '{self.embedding_model}' "
                 f"at '{self.ollama_host}': {exc}"
-            ) from exc  
+            ) from exc
 
-    def generate_chunk_embeddings(self, chunks: List[CodeChunk]) -> List[Tuple[CodeChunk, List[float]]]:
-        """Generate embeddings for a list of code chunks.
-        
-        Args:
-            chunks: List of CodeChunks to embed
-            
-        Returns:
-            List of tuples containing (chunk, embedding_vector)
-        """
-        results = []
-        for chunk in chunks:
-            # Create a meaningful text representation for the embedding
-            embedding_text = self._create_embedding_text(chunk)
-            vector = self.generate_embedding(embedding_text)
-            results.append((chunk, vector))
-        
-        return results
+        vectors = response.embeddings
+
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                "Ollama embedding count mismatch: "
+                f"sent {len(texts)} texts but received "
+                f"{len(vectors)} vectors."
+            )
+
+        return [
+            list(vector)
+            for vector in vectors
+        ]
+
+
+    def generate_embedding(
+        self,
+        text: str,
+    ) -> list[float]:
+        """Generate a single embedding."""
+
+        return self.generate_embeddings([text])[0]
+
+    def generate_chunk_embeddings(
+        self,
+        chunks: list[CodeChunk],
+    ) -> list[tuple[CodeChunk, list[float]]]:
+        """Generate chunk embeddings in a single batch request."""
+
+        if not chunks:
+            return []
+
+        texts = [
+            self._create_embedding_text(chunk)
+            for chunk in chunks
+        ]
+
+        vectors = self.generate_embeddings(texts)
+
+        return list(
+            zip(
+                chunks,
+                vectors,
+            )
+        )
     
     def _create_embedding_text(self, chunk: CodeChunk) -> str:
         """Create a text representation suitable for embedding generation.

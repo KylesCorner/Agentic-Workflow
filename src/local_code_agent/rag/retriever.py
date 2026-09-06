@@ -10,12 +10,40 @@ import hashlib
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import math
+import subprocess
 
 from .chunker import TreeSitterChunker
 from .models import CodeChunk, RetrievalResult
 from .document_store import DocumentStore, SimpleDocumentStore
 from .embeddings import EmbeddingSystem
 
+SUPPORTED_EXTENSIONS = {
+    ".py",
+    ".c",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".h",
+    ".hpp",
+    ".hh",
+    ".hxx",
+}
+
+EXCLUDED_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+    "build",
+    "dist",
+    "target",
+}
+
+MAX_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB
 
 
 class PersistentRetriever:
@@ -178,29 +206,67 @@ class RAGSystem:
         self.retriever = PersistentRetriever(db_path)
 
     
-    def index_repository(self, repo_root: Path) -> None:
-        """Index all code files in a repository.
-        
-        Args:
-            repo_root: Root directory of the repository to index
-        """
-        # Find all supported files
-        supported_extensions = {'.py', '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.hxx'}
-        chunks = []
-        
-        for file_path in repo_root.rglob('*'):
-            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                try:
-                    file_chunks = self.chunker.chunk_file(file_path, repo_root)
-                    chunks.extend(file_chunks)
-                except Exception as e:
-                    # Log error but continue with other files
-                    print(f"Warning: Could not process {file_path}: {e}")
-        
-        # Add all chunks to retriever and generate embeddings
-        self.retriever.add_chunks_with_embeddings(chunks)
-        print(f"Indexed {len(chunks)} code chunks from {repo_root}")
-    
+    def index_repository(
+        self,
+        repo_root: Path,
+        *,
+        batch_size: int = 64,
+    ) -> None:
+        """Index repository source files in bounded batches."""
+
+        repo_root = Path(repo_root).resolve()
+
+        batch: list[CodeChunk] = []
+        total_chunks = 0
+        total_files = 0
+
+        for file_path in self._iter_source_files(repo_root):
+            try:
+                file_chunks = self.chunker.chunk_file(
+                    file_path,
+                    repo_root,
+                )
+
+            except Exception as exc:
+                print(
+                    f"Warning: Could not process "
+                    f"{file_path}: {exc}"
+                )
+                continue
+
+            total_files += 1
+
+            for chunk in file_chunks:
+                batch.append(chunk)
+
+                if len(batch) >= batch_size:
+                    self.retriever.add_chunks_with_embeddings(
+                        batch
+                    )
+
+                    total_chunks += len(batch)
+
+                    print(
+                        f"Indexed {total_chunks} chunks "
+                        f"from {total_files} files..."
+                    )
+
+                    batch.clear()
+
+        # Flush anything left over.
+        if batch:
+            self.retriever.add_chunks_with_embeddings(
+                batch
+            )
+
+            total_chunks += len(batch)
+            batch.clear()
+
+        print(
+            f"Indexed {total_chunks} code chunks "
+            f"from {total_files} files in {repo_root}"
+        ) 
+
     def get_all_chunks(self) -> List[CodeChunk]:
         """Return all indexed code chunks."""
         return self.retriever.get_all_chunks()
@@ -225,3 +291,73 @@ class RAGSystem:
     def size(self) -> int:
         """Get the number of chunks in the retriever."""
         return self.retriever.size()
+
+    def _iter_source_files(
+        self,
+        repo_root: Path,
+    ):
+        """Yield source files suitable for RAG indexing."""
+
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo_root),
+                    "ls-files",
+                    "--cached",
+                    "--others",
+                    "--exclude-standard",
+                    "-z",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            relative_paths = [
+                path
+                for path in result.stdout.split("\0")
+                if path
+            ]
+
+            candidates = (
+                repo_root / relative
+                for relative in relative_paths
+            )
+
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Allow RAGSystem to still work outside Git repositories.
+            candidates = repo_root.rglob("*")
+
+        for file_path in candidates:
+            if not file_path.is_file():
+                continue
+
+            try:
+                relative = file_path.relative_to(repo_root)
+            except ValueError:
+                continue
+
+            if any(
+                part in EXCLUDED_DIRS
+                for part in relative.parts[:-1]
+            ):
+                continue
+
+            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+
+            try:
+                size = file_path.stat().st_size
+            except OSError:
+                continue
+
+            if size > MAX_FILE_BYTES:
+                print(
+                    f"Skipping large file: {relative} "
+                    f"({size / (1024 * 1024):.1f} MiB)"
+                )
+                continue
+
+            yield file_path
