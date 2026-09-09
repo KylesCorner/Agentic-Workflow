@@ -473,7 +473,7 @@ requires-dist = [
     { name = "rich", specifier = ">=14.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12" },
     { name = "tavily-python", marker = "extra == 'web'", specifier = ">=0.7.0" },
-    { name = "tree-sitter", marker = "extra == 'rag'", specifier = ">=0.26,<0.27" },
+    { name = "tree-sitter", marker = "extra == 'rag'", specifier = ">=0.25.2" },
     { name = "tree-sitter-c", marker = "extra == 'rag'" },
     { name = "tree-sitter-cpp", marker = "extra == 'rag'" },
     { name = "tree-sitter-python", marker = "extra == 'rag'" },

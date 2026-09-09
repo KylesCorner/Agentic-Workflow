@@ -10,11 +10,21 @@ from local_code_agent.rag.retriever import RAGSystem
 class RAGTools:
     """Agent tools for repository semantic search."""
 
-    def __init__(self, repo: Path) -> None:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        session_id: str | None = None,
+    ) -> None:
         self.repo = repo.resolve()
+        self.session_id = session_id
 
-        self.db_path = self.repo / ".rag_index.db"
-        self.marker_path = self.repo / ".rag_indexed"
+        self.db_path = (
+            self.repo / ".rag_index.db"
+        )
+        self.marker_path = (
+            self.repo / ".rag_indexed"
+        )
 
         self.rag_system = RAGSystem(
             db_path=str(self.db_path)
@@ -134,6 +144,7 @@ class RAGTools:
             query,
             top_k=top_k,
             hybrid_alpha=hybrid_alpha,
+            session_id=self.session_id,
         )
 
         if not results:

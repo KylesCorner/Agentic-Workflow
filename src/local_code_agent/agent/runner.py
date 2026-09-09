@@ -22,6 +22,7 @@ class AgentRunner:
         repo: Path,
         max_iterations: int = 20,
         console: Console | None = None,
+        session_id: str | None = None,
     ) -> None:
         self.client = client
         self.model = model
@@ -29,6 +30,7 @@ class AgentRunner:
         self.max_iterations = max_iterations
         self.console = console or Console()
         self.repo = repo
+        self.session_id = session_id
 
         self.messages: list = [
             {
@@ -38,7 +40,10 @@ class AgentRunner:
         ]
         
         # Initialize RAG tools for contextual search
-        self.rag_tools = RAGTools(repo)
+        self.rag_tools = RAGTools(
+            repo,
+            session_id=session_id,
+        )
         
         # Check if RAG is enabled in settings
         self.use_rag = settings.code_agent_use_rag
@@ -199,6 +204,36 @@ class AgentRunner:
             #
             self.messages.append(message)
             return content
+
+        # The model used the entire tool-call budget without producing a
+        # normal assistant response. Force one final tool-free turn so ask()
+        # always fulfills its -> str contract instead of implicitly returning
+        # None and crashing Rich.Markdown in the CLI.
+        self.console.print(
+            "[yellow]tool iteration limit reached; forcing final response[/]"
+        )
+        final_response = self.client.chat(
+            model=self.model,
+            messages=[
+                *self.messages,
+                {
+                    "role": "system",
+                    "content": (
+                        "The tool-call budget is exhausted. Do not call tools. "
+                        "Give the user a concise final status: what was completed, "
+                        "what failed, and what remains to do."
+                    ),
+                },
+            ],
+            options={
+                "temperature": 0.2,
+            },
+        )
+        final_content = final_response.message.content or (
+            "Tool iteration limit reached before a final response was produced."
+        )
+        self.messages.append(final_response.message)
+        return final_content
 
     def _should_use_rag(self, user_message: str) -> bool:
         """Determine if RAG should be used for this query."""

@@ -58,15 +58,40 @@ class DocumentStore:
                     parent_symbol TEXT,
                     content TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_accessed TIMESTAMP,
+                    access_count INTEGER DEFAULT 0,
+                    tags TEXT
                 )
             """)
             
+            # Migrate databases created by older versions.
+            # CREATE TABLE IF NOT EXISTS does not add newly introduced columns.
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(chunks)")
+            }
+            if "last_accessed" not in columns:
+                conn.execute(
+                    "ALTER TABLE chunks ADD COLUMN last_accessed TIMESTAMP"
+                )
+            if "access_count" not in columns:
+                conn.execute(
+                    "ALTER TABLE chunks "
+                    "ADD COLUMN access_count INTEGER DEFAULT 0"
+                )
+            if "tags" not in columns:
+                conn.execute(
+                    "ALTER TABLE chunks ADD COLUMN tags TEXT DEFAULT ''"
+                )
+
             # Create indexes for better performance
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_language ON chunks(language)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_symbol ON chunks(symbol)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_node_type ON chunks(node_type)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_access_count ON chunks(access_count)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_last_accessed ON chunks(last_accessed)")
             
             # Create a table for tracking repository indexing
             conn.execute("""
@@ -91,12 +116,15 @@ class DocumentStore:
                 # Remove the id field from the dict since we'll use it as primary key
                 chunk_id = chunk_dict.pop('id')
                 
+                # Handle tags serialization
+                tags = ','.join(chunk_dict.get('tags', [])) if chunk_dict.get('tags') else ''
+                
                 # Insert or update the chunk
                 conn.execute("""
                     INSERT OR REPLACE INTO chunks 
                     (id, path, language, start_line, end_line, start_byte, end_byte, 
-                     node_type, symbol, parent_symbol, content, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                     node_type, symbol, parent_symbol, content, updated_at, last_accessed, access_count, tags)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
                 """, (
                     chunk_id,
                     chunk_dict['path'],
@@ -108,7 +136,10 @@ class DocumentStore:
                     chunk_dict['node_type'],
                     chunk_dict.get('symbol'),
                     chunk_dict.get('parent_symbol'),
-                    chunk_dict['content']
+                    chunk_dict['content'],
+                    chunk_dict.get('last_accessed'),
+                    chunk_dict.get('access_count', 0),
+                    tags
                 ))
     
     def add_chunk(self, chunk: CodeChunk) -> None:
@@ -233,7 +264,10 @@ class DocumentStore:
         """Convert a database row to a CodeChunk object."""
         # Row structure from chunks table:
         # id, path, language, start_line, end_line, start_byte, end_byte, 
-        # node_type, symbol, parent_symbol, content, created_at, updated_at
+        # node_type, symbol, parent_symbol, content, created_at, updated_at, last_accessed, access_count, tags
+        
+        # Parse tags from comma-separated string
+        tags = row[15].split(',') if row[15] else []
         
         return CodeChunk(
             id=row[0],
@@ -246,7 +280,10 @@ class DocumentStore:
             node_type=row[7],
             symbol=row[8],
             content=row[10],  # Content is at index 10
-            parent_symbol=row[9]  # Parent symbol is at index 9
+            parent_symbol=row[9],  # Parent symbol is at index 9
+            last_accessed=row[13] if row[13] else None,
+            access_count=row[14] if row[14] else 0,
+            tags=tags
         )
     
     def clear(self) -> None:
@@ -254,6 +291,61 @@ class DocumentStore:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM chunks")
             conn.execute("DELETE FROM repositories")
+    
+    def update_access_info(self, chunk_id: str) -> None:
+        """Update access information for a chunk."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                UPDATE chunks 
+                SET last_accessed = CURRENT_TIMESTAMP, 
+                    access_count = access_count + 1
+                WHERE id = ?
+            """, (chunk_id,))
+    
+    def get_least_accessed_chunks(self, limit: int = 10) -> List[CodeChunk]:
+        """Get chunks with the lowest access counts."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT * FROM chunks 
+                ORDER BY access_count ASC, last_accessed ASC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            return [self._row_to_chunk(row) for row in rows]
+    
+    def get_chunks_by_tag(self, tag: str) -> List[CodeChunk]:
+        """Get all chunks with a specific tag."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Use LIKE operator to match tags (since they're stored as comma-separated)
+            cursor = conn.execute("""
+                SELECT * FROM chunks 
+                WHERE tags LIKE ?
+                ORDER BY start_line
+            """, (f"%{tag}%",))
+            rows = cursor.fetchall()
+            return [self._row_to_chunk(row) for row in rows]
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get memory usage statistics."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Get total chunk count
+            cursor = conn.execute("SELECT COUNT(*) FROM chunks")
+            total_chunks = cursor.fetchone()[0]
+            
+            # Get average access count
+            cursor = conn.execute("SELECT AVG(access_count) FROM chunks")
+            avg_access_count = cursor.fetchone()[0] or 0
+            
+            # Get oldest and newest chunks
+            cursor = conn.execute("SELECT MIN(created_at), MAX(created_at) FROM chunks")
+            min_created, max_created = cursor.fetchone()
+            
+            return {
+                'total_chunks': total_chunks,
+                'average_access_count': avg_access_count,
+                'oldest_chunk': min_created,
+                'newest_chunk': max_created
+            }
 
 
 class SimpleDocumentStore:

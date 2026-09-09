@@ -14,8 +14,9 @@ import subprocess
 
 from .chunker import TreeSitterChunker
 from .models import CodeChunk, RetrievalResult
-from .document_store import DocumentStore, SimpleDocumentStore
+from .document_store import SimpleDocumentStore
 from .embeddings import EmbeddingSystem
+from .memory_manager import MemoryManager
 
 SUPPORTED_EXTENSIONS = {
     ".py",
@@ -48,14 +49,12 @@ MAX_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB
 
 class PersistentRetriever:
     """Persistent retriever for code chunks using SQLite storage.
-    
-    This retriever stores chunks in a persistent database and provides 
-    similarity search functionality.
     """
     
     def __init__(self, db_path: str = "rag_index.db"):
         self.store = SimpleDocumentStore(db_path)
         self.embedding_system = EmbeddingSystem(db_path)
+        self.memory_manager = MemoryManager(db_path)
     
     def add_chunks_with_embeddings(self, chunks: List[CodeChunk]) -> None:
         """Add chunks to the retriever and generate embeddings for them.
@@ -77,7 +76,11 @@ class PersistentRetriever:
         """Remove a chunk by ID."""
         return self.store.remove_chunk(chunk_id)
     
-    def search(self, query: str, top_k: int = 5, hybrid_alpha: float = 0.5) -> List[RetrievalResult]:
+    def get_chunks_by_session(self, session_id: str) -> List[CodeChunk]:
+        """Get all chunks associated with a session."""
+        return self.memory_manager.get_chunks_by_session(session_id)
+    
+    def search(self, query: str, top_k: int = 5, hybrid_alpha: float = 0.5, session_id: Optional[str] = None) -> List[RetrievalResult]:
         """Search for relevant chunks based on a query using hybrid retrieval.
         
         This implementation uses both BM25 (text-based) and semantic similarity search,
@@ -87,6 +90,7 @@ class PersistentRetriever:
             query: Search query string
             top_k: Number of top results to return
             hybrid_alpha: Weight for semantic search (0.0 = BM25 only, 1.0 = semantic only)
+            session_id: Optional session identifier for memory tracking
             
         Returns:
             List of retrieval results with scores
@@ -107,10 +111,24 @@ class PersistentRetriever:
         # If no embeddings available, fall back to BM25 only
         if not has_embeddings:
             print("Warning: No embeddings found. Using BM25-only search.")
-            return self._bm25_search(query, top_k)
+            results = self._bm25_search(query, top_k)
+            
+            # Track session memory if session_id is provided
+            if session_id:
+                for result in results:
+                    self.memory_manager.track_session_chunk(session_id, result.chunk.id)
+            
+            return results
         
         # Use hybrid search with both BM25 and semantic similarity
-        return self._hybrid_search(query, top_k, hybrid_alpha)
+        results = self._hybrid_search(query, top_k, hybrid_alpha)
+        
+        # Track session memory if session_id is provided
+        if session_id:
+            for result in results:
+                self.memory_manager.track_session_chunk(session_id, result.chunk.id)
+        
+        return results
     
     def _bm25_search(self, query: str, top_k: int = 5) -> List[RetrievalResult]:
         """Perform BM25-based search using the document store's search method."""
@@ -271,19 +289,21 @@ class RAGSystem:
         """Return all indexed code chunks."""
         return self.retriever.get_all_chunks()
 
-    def search(self, query: str, top_k: int = 5, hybrid_alpha: float = 0.5) -> List[RetrievalResult]:
-        """Search for relevant code chunks.
-        
-        Args:
-            query: Search query string
-            top_k: Number of top results to return
-            hybrid_alpha: Weight for semantic search (0.0 = BM25 only, 1.0 = semantic only)
-            
-        Returns:
-            List of retrieval results with scores
-        """
-        return self.retriever.search(query, top_k, hybrid_alpha)
-    
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        hybrid_alpha: float = 0.5,
+        session_id: str | None = None,
+    ) -> list[RetrievalResult]:
+
+        return self.retriever.search(
+            query=query,
+            top_k=top_k,
+            hybrid_alpha=hybrid_alpha,
+            session_id=session_id,
+        ) 
+
     def get_chunk(self, chunk_id: str) -> Optional[CodeChunk]:
         """Get a specific chunk by ID."""
         return self.retriever.get_chunk(chunk_id)
