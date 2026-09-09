@@ -79,6 +79,7 @@ Thumbs.db
 *.lca.log
 cache/
 logs/
+
 # Local Code Agent RAG index
 .rag_index.db
 .rag_index.db-*
@@ -100,4 +101,4 @@ local_code_agent.egg-info/
 
 # Test files
 tests/__pycache__/
-test_*.py
+# test_*.py

@@ -41,5 +41,13 @@ packages = ["src/local_code_agent"]
 [tool.ruff]
 line-length = 100
 
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+
+markers = [
+  "integration: local multi-component integration tests",
+  "live: tests requiring external services such as Ollama, Tavily, or GitHub",
+]
