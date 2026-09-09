@@ -20,7 +20,7 @@ web = [
   "tavily-python>=0.7.0",
 ]
 rag = [
-  "tree-sitter>=0.25.2",
+  "tree-sitter==0.25.2",
   "tree-sitter-c",
   "tree-sitter-cpp",
   "tree-sitter-python",
