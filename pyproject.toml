@@ -13,23 +13,16 @@ dependencies = [
   "typer>=0.16.0",
   "rich>=14.0.0",
   "pydantic-settings>=2.10.0",
-]
-
-[project.optional-dependencies]
-web = [
-  "tavily-python>=0.7.0",
-]
-rag = [
   "tree-sitter==0.25.2",
   "tree-sitter-c",
   "tree-sitter-cpp",
   "tree-sitter-python",
-]
-dev = [
+  "tavily-python>=0.7.0",
   "pytest>=8.0",
   "ruff>=0.12",
   "mypy>=1.17",
 ]
+
 
 [project.scripts]
 local-code-agent = "local_code_agent.cli:app"

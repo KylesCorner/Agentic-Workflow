@@ -4,6 +4,14 @@ A local coding-agent CLI for C, C++, and Python. It talks to an Ollama server ov
 
 The Tree-sitter RAG subsystem is now fully integrated and functional in `local_code_agent.rag`.
 
+## Recent Changes
+
+- Added persistent conversations and memory management
+- Implemented persistent RAG storage using SQLite
+- Enhanced RAG system with hybrid retrieval (BM25 + semantic)
+- Added Docker, grep, find, sed tools
+- Improved RAG running capabilities
+
 ## Install
 
 ```bash
@@ -201,6 +209,12 @@ This sequence isolates model/tool-call failures from repository retrieval proble
 ## RAG System
 
 The Tree-sitter RAG system is now fully integrated and functional. It provides semantic code chunking, embedding generation, and hybrid retrieval (BM25 + semantic similarity) for code understanding in the local code agent.
+
+## Recent Enhancements
+
+- Persistent RAG storage using SQLite
+- Hybrid retrieval combining BM25 and semantic similarity search
+- Enhanced indexing and retrieval capabilities
 
 ## Using the RAG System
 

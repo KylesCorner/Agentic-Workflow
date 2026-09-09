@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     code_agent_max_tool_iterations: int = 20
     code_agent_max_tool_output_chars: int = 40_000
     code_agent_use_rag: bool = True
+    code_agent_compaction_threshold_chars: int = 80_000
+    code_agent_compaction_keep_recent_chars: int = 30_000
+    code_agent_compaction_min_messages: int = 12
 
 
 settings = Settings()
