@@ -252,7 +252,7 @@ results = rag.search("function name", hybrid_alpha=0.5)
 
 ## Persistent Storage
 
-The RAG system now uses SQLite-based persistent storage to maintain indexes between sessions. The default database file is `rag_index.db` and can be customized:
+The RAG system now uses SQLite-based persistent storage to maintain indexes between sessions. The default database file is stored in the `.lca` directory of each repository, but can be customized:
 
 ```python
 from local_code_agent.rag.retriever import RAGSystem

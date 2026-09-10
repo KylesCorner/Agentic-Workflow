@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,91 @@ class AgentRunner:
         self.restored_message_count = len(
             restored
         )
+
+    @staticmethod
+    def _extract_web_sources(result: str) -> list[str]:
+        """Extract Tavily source URLs from web_search output."""
+
+        sources: list[str] = []
+
+        for line in result.splitlines():
+            line = line.strip()
+
+            if not line.startswith("URL:"):
+                continue
+
+            url = line.removeprefix("URL:").strip()
+
+            if url and url not in sources:
+                sources.append(url)
+
+        return sources
+
+
+    @staticmethod
+    def _append_web_sources(
+        content: str,
+        sources: list[str],
+    ) -> str:
+        """Always append web sources used during this turn."""
+
+        if not sources:
+            return content
+
+        unique_sources = list(dict.fromkeys(sources))
+
+        source_block = "\n".join(
+            f"- {url}"
+            for url in unique_sources
+        )
+
+        return (
+            content.rstrip()
+            + "\n\n### Web Sources\n"
+            + source_block
+        )
+
+    @staticmethod
+    def _prepare_tool_arguments(
+        name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Normalize tool arguments before persistence and execution."""
+
+        prepared = dict(arguments)
+
+        if name != "web_search":
+            return prepared
+
+        query = str(
+            prepared.get("query", "")
+            or ""
+        )
+
+        recency_terms = (
+            "latest",
+            "current",
+            "recent",
+            "newest",
+            "today",
+        )
+
+        if any(
+            term in query.lower()
+            for term in recency_terms
+        ):
+            query = re.sub(
+                r"\b(?:19|20)\d{2}\b",
+                "",
+                query,
+            )
+
+            prepared["query"] = " ".join(
+                query.split()
+            )
+
+        return prepared
+
 
     @staticmethod
     def _normalize_message(
@@ -599,6 +685,8 @@ class AgentRunner:
         self,
         user_message: str,
     ) -> str:
+        web_sources: list[str] = []
+
         self.registry.begin_turn(
             user_message
         )
@@ -632,26 +720,74 @@ class AgentRunner:
             # 1. Normal/native Ollama tool calling.
             #
             if message.tool_calls:
-                self._append_message(
-                    message
+                assistant_message = (
+                    self._normalize_message(
+                        message
+                    )
                 )
 
-                for call in (
+                normalized_calls: list[
+                    tuple[str, dict[str, Any]]
+                ] = []
+
+                tool_call_payloads = (
+                    assistant_message.get(
+                        "tool_calls",
+                        [],
+                    )
+                )
+
+                for index, call in enumerate(
                     message.tool_calls
                 ):
-                    name = (
-                        call.function.name
-                    )
-
-                    arguments = dict(
+                    name = call.function.name
+                    raw_arguments = dict(
                         call.function.arguments
                         or {}
                     )
-
-                    self.console.print(
-                        f"[dim]tool → "
-                        f"{name}[/]"
+                    arguments = (
+                        self._prepare_tool_arguments(
+                            name,
+                            raw_arguments,
+                        )
                     )
+
+                    normalized_calls.append(
+                        (name, arguments)
+                    )
+
+                    # Persist the effective arguments rather than stale
+                    # model-generated arguments such as an invented year.
+                    if index < len(
+                        tool_call_payloads
+                    ):
+                        function_payload = (
+                            tool_call_payloads[index]
+                            .setdefault(
+                                "function",
+                                {},
+                            )
+                        )
+                        function_payload[
+                            "arguments"
+                        ] = arguments
+
+                self._append_message(
+                    assistant_message
+                )
+
+                for name, arguments in (
+                    normalized_calls
+                ):
+                    self.console.print(
+                        f"[dim]tool → {name}[/]"
+                    )
+
+                    if name == "web_search":
+                        self.console.print(
+                            "[dim]web query → "
+                            f"{arguments.get('query', '')}[/]"
+                        )
 
                     result = (
                         self.registry.execute(
@@ -659,6 +795,13 @@ class AgentRunner:
                             arguments,
                         )
                     )
+
+                    if name == "web_search":
+                        web_sources.extend(
+                            self._extract_web_sources(
+                                str(result)
+                            )
+                        )
 
                     self._append_message(
                         {
@@ -693,7 +836,9 @@ class AgentRunner:
                     "Qwen tool call"
                 )
 
-                valid_calls = []
+                valid_calls: list[
+                    tuple[str, dict[str, Any]]
+                ] = []
 
                 for call in recovered:
                     if not (
@@ -710,8 +855,18 @@ class AgentRunner:
                         )
                         continue
 
+                    arguments = (
+                        self._prepare_tool_arguments(
+                            call.name,
+                            dict(
+                                call.arguments
+                                or {}
+                            ),
+                        )
+                    )
+
                     valid_calls.append(
-                        call
+                        (call.name, arguments)
                     )
 
                 if not valid_calls:
@@ -722,19 +877,18 @@ class AgentRunner:
 
                 synthetic_calls = []
 
-                for index, call in enumerate(
-                    valid_calls
-                ):
+                for index, (
+                    name,
+                    arguments,
+                ) in enumerate(valid_calls):
                     synthetic_calls.append(
                         {
                             "type": "function",
                             "function": {
                                 "index": index,
-                                "name": (
-                                    call.name
-                                ),
+                                "name": name,
                                 "arguments": (
-                                    call.arguments
+                                    arguments
                                 ),
                             },
                         }
@@ -750,25 +904,37 @@ class AgentRunner:
                     }
                 )
 
-                for call in valid_calls:
+                for name, arguments in (
+                    valid_calls
+                ):
                     self.console.print(
-                        f"[dim]tool → "
-                        f"{call.name}[/]"
+                        f"[dim]tool → {name}[/]"
                     )
+
+                    if name == "web_search":
+                        self.console.print(
+                            "[dim]web query → "
+                            f"{arguments.get('query', '')}[/]"
+                        )
 
                     result = (
                         self.registry.execute(
-                            call.name,
-                            call.arguments,
+                            name,
+                            arguments,
                         )
                     )
+
+                    if name == "web_search":
+                        web_sources.extend(
+                            self._extract_web_sources(
+                                str(result)
+                            )
+                        )
 
                     self._append_message(
                         {
                             "role": "tool",
-                            "tool_name": (
-                                call.name
-                            ),
+                            "tool_name": name,
                             "content": str(
                                 result
                             ),
@@ -780,14 +946,23 @@ class AgentRunner:
             #
             # 3. Normal assistant response.
             #
-            self._append_message(
-                message
+            final_content = (
+                self._append_web_sources(
+                    content,
+                    web_sources,
+                )
             )
 
-            # A completed turn is a good secondary compaction point.
+            self._append_message(
+                {
+                    "role": "assistant",
+                    "content": final_content,
+                }
+            )
+
             self._maybe_compact()
 
-            return content
+            return final_content
 
         #
         # 4. Tool budget exhausted.
@@ -836,8 +1011,18 @@ class AgentRunner:
             )
         )
 
+        final_content = (
+            self._append_web_sources(
+                final_content,
+                web_sources,
+            )
+        )
+
         self._append_message(
-            final_response.message
+            {
+                "role": "assistant",
+                "content": final_content,
+            }
         )
 
         self._maybe_compact()

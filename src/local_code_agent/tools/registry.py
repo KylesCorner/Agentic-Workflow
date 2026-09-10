@@ -126,31 +126,128 @@ class ToolRegistry:
             + result[-tail_chars:]
         )
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> str:
+    def execute(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> str:
         spec = self._tools.get(name)
+
         if spec is None:
             return f"ERROR: unknown tool: {name}"
 
-        if spec.explicit_action is not None and not self._explicitly_requested(spec.explicit_action):
+        # Always sanitize model-generated arguments before
+        # permission checks, previews, or tool execution.
+        arguments = self.prepare_arguments(
+            name,
+            arguments,
+        )
+
+        if (
+            spec.explicit_action is not None
+            and not self._explicitly_requested(
+                spec.explicit_action
+            )
+        ):
             return (
                 f"DENIED BY POLICY: {name} requires the user to explicitly request "
                 f"the '{spec.explicit_action.value}' action in the current message. "
                 "The --yes flag does not bypass this policy."
             )
 
-        if spec.permission is not Permission.READ and not self.auto_approve:
-            preview = self._preview_arguments(arguments)
-            self.console.print(
-                f"\n[bold yellow]{spec.permission.value.upper()} tool:[/] {name}({preview})"
+        if (
+            spec.permission is not Permission.READ
+            and not self.auto_approve
+        ):
+            preview = self._preview_arguments(
+                arguments
             )
-            if not Confirm.ask("Approve this tool call?", default=False):
+
+            self.console.print(
+                f"\n[bold yellow]"
+                f"{spec.permission.value.upper()} tool:[/] "
+                f"{name}({preview})"
+            )
+
+            if not Confirm.ask(
+                "Approve this tool call?",
+                default=False,
+            ):
                 return f"DENIED BY USER: {name}"
 
         try:
-            result = str(spec.function(**arguments))
-        except Exception as exc:  # Tool errors are returned to the model, not fatal to the session.
-            result = f"ERROR running {name}: {type(exc).__name__}: {exc}"
-        return self._truncate_result(result)
+            result = str(
+                spec.function(**arguments)
+            )
 
+        except Exception as exc:
+            result = (
+                f"ERROR running {name}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        return self._truncate_result(result)
     def has_tool(self, name: str) -> bool:
         return name in self._tools
+
+    def prepare_arguments(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Normalize model-generated tool arguments."""
+
+        arguments = dict(arguments)
+
+        if name != "web_search":
+            return arguments
+
+        query = str(
+            arguments.get("query", "")
+        ).strip()
+
+        recency_terms = (
+            "latest",
+            "current",
+            "recent",
+            "newest",
+            "today",
+        )
+
+        query_lower = query.lower()
+        request_lower = (
+            self._current_user_request.lower()
+        )
+
+        recency_requested = any(
+            term in query_lower
+            or term in request_lower
+            for term in recency_terms
+        )
+
+        # Detect a model-added trailing year.
+        year_match = re.search(
+            r"\s+((?:19|20)\d{2})\s*$",
+            query,
+        )
+
+        if recency_requested and year_match:
+            year = year_match.group(1)
+
+            # Preserve the year if the USER explicitly
+            # requested that year.
+            user_requested_year = re.search(
+                rf"\b{re.escape(year)}\b",
+                self._current_user_request,
+            )
+
+            if not user_requested_year:
+                query = query[
+                    :year_match.start()
+                ].rstrip()
+
+        arguments["query"] = " ".join(
+            query.split()
+        )
+
+        return arguments

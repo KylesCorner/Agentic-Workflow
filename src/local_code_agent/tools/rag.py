@@ -19,11 +19,15 @@ class RAGTools:
         self.repo = repo.resolve()
         self.session_id = session_id
 
+        # Use the .lca directory for RAG index files
+        lca_dir = self.repo / ".lca"
+        lca_dir.mkdir(exist_ok=True)
+        
         self.db_path = (
-            self.repo / ".rag_index.db"
+            lca_dir / "rag_index.db"
         )
         self.marker_path = (
-            self.repo / ".rag_indexed"
+            lca_dir / ".rag_indexed"
         )
 
         self.rag_system = RAGSystem(
@@ -61,7 +65,7 @@ class RAGTools:
         Returns:
             A summary of the indexing operation.
 
-        This tool writes .rag_index.db and .rag_indexed in the repository.
+        This tool writes rag_index.db and .rag_indexed in the .lca directory.
         """
 
         if (
