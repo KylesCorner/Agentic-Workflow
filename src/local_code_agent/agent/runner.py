@@ -797,11 +797,11 @@ class AgentRunner:
                     )
 
                     if name == "web_search":
-                        web_sources.extend(
-                            self._extract_web_sources(
-                                str(result)
-                            )
-                        )
+                        new_sources = self._extract_web_sources(str(result))
+                        # Add only unique sources to prevent duplication
+                        for source in new_sources:
+                            if source not in web_sources:
+                                web_sources.append(source)
 
                     self._append_message(
                         {
@@ -925,11 +925,11 @@ class AgentRunner:
                     )
 
                     if name == "web_search":
-                        web_sources.extend(
-                            self._extract_web_sources(
-                                str(result)
-                            )
-                        )
+                        new_sources = self._extract_web_sources(str(result))
+                        # Add only unique sources to prevent duplication
+                        for source in new_sources:
+                            if source not in web_sources:
+                                web_sources.append(source)
 
                     self._append_message(
                         {

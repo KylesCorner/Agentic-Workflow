@@ -116,9 +116,9 @@ def build_registry(
     )
 
     # Unix tools.
-    registry.add(unix.grep, Permission.READ)
-    registry.add(unix.find, Permission.READ)
-    registry.add(unix.sed, Permission.WRITE)
+    # registry.add(unix.grep, Permission.READ)
+    # registry.add(unix.find, Permission.READ)
+    # registry.add(unix.sed, Permission.WRITE)
 
     # Docker tools.
     registry.add(
