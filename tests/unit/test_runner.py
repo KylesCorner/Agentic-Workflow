@@ -93,7 +93,7 @@ class DummyRAGTools:
         self.repo = Path(repo)
         self.session_id = session_id
         self.db_path = (
-            self.repo / ".rag_index.db"
+            self.repo / "rag_index.db"
         )
         self.rag_system = DummyRAGSystem()
 
