@@ -26,9 +26,6 @@ class RAGTools:
         self.db_path = (
             lca_dir / "rag_index.db"
         )
-        self.marker_path = (
-            lca_dir / ".rag_indexed"
-        )
 
         self.rag_system = RAGSystem(
             db_path=str(self.db_path)
@@ -42,7 +39,6 @@ class RAGTools:
             self.db_path,
             Path(f"{self.db_path}-wal"),
             Path(f"{self.db_path}-shm"),
-            self.marker_path,
         ]
 
         for path in paths:
@@ -65,13 +61,12 @@ class RAGTools:
         Returns:
             A summary of the indexing operation.
 
-        This tool writes rag_index.db and .rag_indexed in the .lca directory.
+        This tool writes rag_index.db in the .lca directory.
         """
 
         if (
             not force
             and self.db_path.exists()
-            and self.marker_path.exists()
             and self.rag_system.size() > 0
         ):
             return (
@@ -86,8 +81,6 @@ class RAGTools:
         self.rag_system.index_repository(
             self.repo
         )
-
-        self.marker_path.touch()
 
         size = self.rag_system.size()
 
